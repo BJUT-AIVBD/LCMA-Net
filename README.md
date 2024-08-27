@@ -1,7 +1,7 @@
 # LCMA-Net
 
 ## Usage
-Run `python train.py` to train LCMA-Net.
+Modify the path in mma.yaml and then run `python train.py` to train LCMA-Net.
 
 ## Dataset
 All the resources contained in the dataset are free for research institutes and individuals. The copyright remains with the original owners of the audio/video.

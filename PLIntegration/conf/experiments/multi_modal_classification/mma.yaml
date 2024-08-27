@@ -1,0 +1,230 @@
+device: &device cuda
+image_size: &image_size 112
+nb_samp: &nb_samp 59049
+batch_size: &batch_size 64
+learning_rate: &lr 0.001
+# state_dict: &st /mnt/homeold/yjc/PythonProject/PLIntegration/PLIntegration/experiments/mma.pt
+#state_dict: &st /mnt/homeold/yjc/PythonProject/PLIntegration/train_outputs/mma_reid/MFFN_ICODE2_pre/2023-11-16_22-27-07/checkpoints/last.ckpt
+state_dict: &st
+accumulate_grad_batches: &accumulate_grad_batches 1
+checkpoint: &resume
+config: &cfg
+fast_dev_run: &fast_test 0
+overfit_batches: &overfit 0
+
+model:
+  name: MMClassification_XY_YZ1
+  device: *device
+  batch_size: *batch_size
+  learning_rate: *lr
+  image_size: *image_size
+  nb_samp: *nb_samp
+  state_dict: *st
+  checkpoint: *resume
+  config: *cfg
+  face_checkpoint: &face_ckpt /mnt/homeold/yjc/PythonProject/PLIntegration/train_outputs/face_verification/PolyNet/MVRealAMSoftmax/glint_asia_manifest/2021-11-15_10-14-25/checkpoints/last.ckpt
+  face_configure: &face_cfg /mnt/homeold/yjc/PythonProject/PLIntegration/train_outputs/face_verification/PolyNet/MVRealAMSoftmax/glint_asia_manifest/2021-11-15_10-14-25/.hydra/config.yaml
+  video_checkpoint: &video_ckpt /mnt/homeold/yjc/PythonProject/PLIntegration/train_outputs/action_recognition/stda_resnext3d101/ArcFace/frames/2021-11-24_22-42-47/checkpoints/epoch=39-train_loss=38.54-EER=14.54.ckpt
+  video_configure: &video_cfg /mnt/homeold/yjc/PythonProject/PLIntegration/train_outputs/action_recognition/stda_resnext3d101/ArcFace/frames/2021-11-24_22-42-47/.hydra/config.yaml
+  audio_checkpoint: &audio_ckpt /home/yjc/PythonProject/SpeakerRecognize/project/lightning_logs/RawNet_NL_GRU/nl_odim_64/2021-0317-21:19:25/-epoch=035-train_loss=0.40-EER=2.73%.ckpt
+  audio_configure: &audio_cfg
+  trial_path: /mnt/homeold/yjc/PythonProject/PLIntegration/data/union_test_trial_0.2.txt
+
+  train_ds:
+    __target__:
+      - PLIntegration.datasets.multi_modal.UnionDataset3
+    args:
+      - face_dir: /data/REID/faces
+        video_dir: &path /data/REID/frames
+        audio_dir: /data/REID/audios
+        manifest_filepath: *path
+        image_size: *image_size
+        nb_samp: *nb_samp
+        train_split: 587
+        loader:
+          batch_size: *batch_size
+          num_workers: 20
+          pin_memory: True
+          shuffle: True
+          drop_last: True
+
+  validation_ds:
+    __target__:
+      - PLIntegration.datasets.multi_modal.TrialTestOld3
+    args:
+      - face_dir: /data/REID/faces
+        video_dir: /data/REID/frames
+        audio_dir: /data/REID/audios
+        image_size: *image_size
+        nb_samp: *nb_samp
+        is_train: false
+        train_split: 587
+        loader:
+          batch_size: *batch_size
+          num_workers: 20
+          pin_memory: True
+          shuffle: False
+          drop_last: False
+
+  test_ds:
+    __target__:
+      - PLIntegration.datasets.multi_modal.TrialTestOld3
+    args:
+      - face_dir: /data/REID/faces
+        video_dir: /data/REID/frames
+        audio_dir: /data/REID/audios
+        image_size: *image_size
+        nb_samp: *nb_samp
+        is_train: false
+        train_split: 587
+        loader:
+          batch_size: *batch_size
+          num_workers: 20
+          pin_memory: True
+          shuffle: False
+          drop_last: False
+
+  cross_attention:
+    middle_channels: 32
+
+  embedding_aggregator:
+    __target__:
+      - PLIntegration.experiments.pl_models.FaceClassification
+      - PLIntegration.experiments.pl_models.VideoClassification
+      - torch.nn.Identity
+    args:
+      - checkpoint: *face_ckpt
+        cfg: *face_cfg
+        in_features: 25088
+        embed_size: 512
+        grad:
+#          - null
+          - all
+      - checkpoint: *video_ckpt
+        cfg: *video_cfg
+        pool_dims: 3
+        output_size:
+          - 1
+          - 1
+          - 1
+        linear: false
+        in_features: 2048
+        embed_size: 2048
+        grad:
+#          - null
+          - all
+      - grad:
+#          - null
+          - all
+
+  embedding_mixer:
+    __target__: PLIntegration.networks.mixer.concat.Concat
+    in_features: 3584
+    fc_size:
+      - 2048
+      - 1024
+    act: gelu
+    dropout: 0
+
+  loss_function:
+    __target__: PLIntegration.networks.loss.ce.ram_softmax.RealAMSoftmax
+    scale: 64
+    margin: 0.35
+    t: 0.2
+    fixed: false
+    gamma: 2.0
+    lmbd: 0.2
+    easy_margin: false
+    embed_size: 1024
+    num_classes: 461
+
+  optimizer:
+    __target__: torch.optim.SGD
+    args:
+      lr: *lr
+      weight_decay: 0.0001
+      momentum: 0.9
+
+    lr_scheduler:
+      __target__: torch.optim.lr_scheduler.MultiStepLR
+      interval: step # step or epoch
+      args:
+        milestones:
+          - 10e3
+          - 20e3
+          - 30e3
+        gamma: 0.1
+        last_epoch: null # computed at runtime or explicitly set here
+
+  grad:
+#    - null
+    - att
+    - voice_block4
+    - voice_block5
+    - voice_bn_before_gru
+    - voice_gru
+    - voice_fc1_gru
+    - face_layer3
+    - face_layer4
+    - face_bn2
+    - video_layer2
+    - video_layer3
+    - video_layer4
+
+trainer:
+  gpus: 1 # number of gpus
+  max_epochs: null
+  max_steps: 60e3 # computed at runtime if not set
+  accumulate_grad_batches: *accumulate_grad_batches
+  precision: 32
+  deterministic: False
+  benchmark: True
+  enable_checkpointing: True
+  profiler: "simple"
+  detect_anomaly: True
+  resume_from_checkpoint: *resume
+  log_every_n_steps: 100  # Interval of logging.
+  val_check_interval: 1.0
+  check_val_every_n_epoch: 10
+  num_sanity_val_steps: -1
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+  limit_test_batches: 1.0
+  track_grad_norm: -1
+  fast_dev_run: *fast_test
+  overfit_batches: *overfit
+
+callbacks:
+  __target__:
+    - pytorch_lightning.callbacks.RichModelSummary
+    - PLIntegration.utils.progressbar.CustomProgressBar
+    - pytorch_lightning.callbacks.LearningRateMonitor
+    - pytorch_lightning.callbacks.ModelCheckpoint
+
+  args:
+    - max_depth: 2
+    - refresh_rate: 1
+      position: 0
+    - null
+    - dirpath: "checkpoints"
+      filename: "{epoch}-{train_loss:.2f}-{EER:.2f}"
+      monitor: EER
+      verbose: True
+      save_top_k: 3
+      save_last: True
+      mode: min
+      auto_insert_metric_name: True
+      every_n_epochs: null
+
+loggers:
+  __target__:
+    - pytorch_lightning.loggers.TensorBoardLogger
+
+  args:
+    - save_dir: "tb_logs"
+      name: ""
+      version: ""
+      log_graph: True
+      default_hp_metric: True
+      prefix: ""
+      sub_dir: None

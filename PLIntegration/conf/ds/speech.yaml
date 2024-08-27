@@ -1,0 +1,9 @@
+name: ???
+manifest: ???
+sample_rate: 16000
+labels: null
+batch_size: 64
+shuffle: True
+num_workers: 8
+pin_memory: True
+time_length: 8

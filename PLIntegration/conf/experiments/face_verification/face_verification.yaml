@@ -1,0 +1,216 @@
+name: &name PolyNet
+device: &device cuda
+image_size: &image_size 112
+batch_size: &batch_size 64
+learning_rate: &lr 0.1
+accumulate_grad_batches: &accumulate_grad_batches 1
+checkpoint: &resume /home/yjc/PythonProject/PLIntegration/train_outputs/face_verification/PolyNet/MVRealAMSoftmax/glint_asia_manifest/2021-11-15_10-14-25/checkpoints/last.ckpt
+config: &cfg /home/yjc/PythonProject/PLIntegration/train_outputs/face_verification/PolyNet/MVRealAMSoftmax/glint_asia_manifest/2021-11-15_10-14-25/.hydra/config.yaml
+fast_dev_run: &fast_test 0
+overfit_batches: &overfit 0
+
+model:
+  device: *device
+  batch_size: *batch_size
+  learning_rate: *lr
+  image_size: *image_size
+  checkpoint: *resume
+  config: *cfg
+  trial_path: /home/omnisky/yjc/PLIntegration/data/val_trial.txt
+
+  train_ds:
+    __target__:
+      - PLIntegration.datasets.image.ManifestBase
+    args:
+      - manifest_filepath: /home/omnisky/yjc/PLIntegration/data/glint_asia_manifest.json
+        loader:
+          batch_size: *batch_size
+          num_workers: 8
+          pin_memory: True
+          shuffle: True
+          drop_last: False
+        transformers:
+          __target__:
+#            - torchvision.transforms.ToPILImage
+            - torchvision.transforms.RandomHorizontalFlip
+            - torchvision.transforms.ToTensor
+            - torchvision.transforms.Normalize
+          args:
+#            - null
+            - p: 0.5
+            - null
+            - mean:
+                - 0.5
+                - 0.5
+                - 0.5
+              std:
+                - 0.5
+                - 0.5
+                - 0.5
+
+  validation_ds:
+    __target__:
+      - PLIntegration.datasets.image.TrialTest
+    args:
+      - manifest_filepath: /home/omnisky/yjc/PLIntegration/data/reid_face_all_manifest.json
+        loader:
+          batch_size: *batch_size
+          num_workers: 8
+          pin_memory: True
+          shuffle: False
+          drop_last: False
+
+        transformers:
+          __target__:
+            - torchvision.transforms.Resize
+            - torchvision.transforms.ToTensor
+            - torchvision.transforms.Normalize
+          args:
+            - size: *image_size
+            - null
+            - mean:
+                - 0.5
+                - 0.5
+                - 0.5
+              std:
+                - 0.5
+                - 0.5
+                - 0.5
+
+  test_ds:
+    __target__:
+      - PLIntegration.datasets.image.TrialTest
+    args:
+      - manifest_filepath: /home/omnisky/yjc/PLIntegration/data/reid_face_all_manifest.json
+        loader:
+          batch_size: *batch_size
+          num_workers: 8
+          pin_memory: True
+          shuffle: False
+          drop_last: False
+
+        transformers:
+          __target__:
+            - torchvision.transforms.Resize
+            - torchvision.transforms.ToTensor
+            - torchvision.transforms.Normalize
+          args:
+            - size: *image_size
+            - null
+            - mean:
+                - 0.5
+                - 0.5
+                - 0.5
+              std:
+                - 0.5
+                - 0.5
+                - 0.5
+
+  feature_extractor:
+    __target__: PLIntegration.networks._2d.resnet.resnext50
+    input_channels: 3
+#    filts:
+#      - 64
+#      - 128
+#      - 256
+#      - 512
+#    layers:
+#      - 3
+#      - 4
+#      - 6
+#      - 3
+    dropout: 0
+
+  embedding_aggregator:
+    __target__: PLIntegration.networks.aggregators.pooling.AdaAvgPool
+    linear: true
+    in_features: 2048
+    embed_size: &embed_size 512
+
+  loss_function:
+    __target__: PLIntegration.networks.loss.ce.ram_softmax.MVRealAMSoftmax
+    scale: 64
+    margin: 0.35
+    t: 0.2
+    fixed: false
+    gamma: 2.0
+    lmbd: 0.2
+    easy_margin: false
+    embed_size: *embed_size
+    num_classes: 93979
+
+  optimizer:
+    __target__: torch.optim.SGD
+    args:
+      lr: *lr
+      weight_decay: 0.0005
+      momentum: 0.9
+
+    lr_scheduler:
+      __target__: torch.optim.lr_scheduler.MultiStepLR
+      interval: step # step or epoch
+      args:
+        milestones:
+          - 100e3
+          - 160e3
+        gamma: 0.1
+        last_epoch: null # computed at runtime or explicitly set here
+
+trainer:
+  gpus: 1 # number of gpus
+  max_epochs: null
+  max_steps: 200e3 # computed at runtime if not set
+  accumulate_grad_batches: *accumulate_grad_batches
+  precision: 32
+  deterministic: False
+  benchmark: True
+  enable_checkpointing: True
+  profiler: "simple"
+  detect_anomaly: True
+  resume_from_checkpoint: *resume
+  log_every_n_steps: 100  # Interval of logging.
+  val_check_interval: 0.5
+  num_sanity_val_steps: -1
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+  limit_test_batches: 1.0
+  track_grad_norm: -1
+  fast_dev_run: *fast_test
+  overfit_batches: *overfit
+
+callbacks:
+  __target__:
+    - pytorch_lightning.callbacks.RichModelSummary
+    - PLIntegration.utils.progressbar.CustomProgressBar
+    - pytorch_lightning.callbacks.LearningRateMonitor
+    - pytorch_lightning.callbacks.ModelCheckpoint
+
+  args:
+    - max_depth: 2
+    - refresh_rate: 1
+      position: 0
+    - null
+    - dirpath: "checkpoints"
+      filename: "{epoch}-{train_loss:.2f}-{EER:.2f}"
+      monitor: EER
+      verbose: True
+      save_top_k: 3
+      save_last: True
+      mode: min
+      auto_insert_metric_name: True
+      every_n_epochs: null
+
+loggers:
+  __target__:
+    - pytorch_lightning.loggers.TensorBoardLogger
+
+  args:
+    - save_dir: "tb_logs"
+      name: ""
+      version: ""
+      log_graph: True
+      default_hp_metric: True
+      prefix: ""
+      sub_dir: None
+
+

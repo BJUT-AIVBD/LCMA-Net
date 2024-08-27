@@ -1,0 +1,2 @@
+run:
+  dir: outputs/${hydra.job.name}/${exp_name}/${experiments.name}/${experiments.model.embedding_aggregator.__target__}/${now:%Y-%m-%d_%H-%M-%S}

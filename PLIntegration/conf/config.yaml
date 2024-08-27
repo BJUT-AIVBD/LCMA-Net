@@ -1,0 +1,5 @@
+exp_name: mma_reid
+defaults:
+  - _self_
+  - hydra: mma
+  - experiments: multi_modal_classification/mma

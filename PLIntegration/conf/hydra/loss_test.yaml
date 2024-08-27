@@ -1,0 +1,6 @@
+run:
+  dir: "${hydra.job.name}_outputs/${exp_name}/\
+        ${get_module:${experiments.model.feature_extractor.__target__}}/\
+        ${get_module:${experiments.model.loss_function.__target__}}/\
+        ${get_name:${experiments.model.train_ds.args[0].manifest_filepath}}/\
+        ${now:%Y-%m-%d_%H-%M-%S}"

@@ -1,0 +1,2 @@
+run:
+  dir: outputs/${hydra.job.name}/${exp_name}/backbone/${experiments.name}/${now:%Y-%m-%d_%H-%M-%S}

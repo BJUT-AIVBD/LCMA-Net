@@ -1,0 +1,4 @@
+run:
+  dir: "${hydra.job.name}_outputs/${exp_name}/\
+        ${experiments.model.name}/\
+        ${now:%Y-%m-%d_%H-%M-%S}"

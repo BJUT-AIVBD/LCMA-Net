@@ -1,0 +1,6 @@
+run:
+  dir: "${hydra.job.name}_outputs/${exp_name}/\
+        ${get_ckpt_modules:${experiments.model.feature_extractor.args[0].checkpoint}}+${get_ckpt_modules:${experiments.model.feature_extractor.args[1].checkpoint}}+${get_module:${experiments.model.feature_extractor.__target__[2]}}/\
+        ${get_ckpt_epoch:${experiments.model.feature_extractor.args[0].checkpoint}}+${get_ckpt_epoch:${experiments.model.feature_extractor.args[1].checkpoint}}+${get_ckpt_epoch:${experiments.model.feature_extractor.args[2].checkpoint}}/\
+        ${get_module:${experiments.model.embedding_mixer.__target__}}/\
+        ${now:%Y-%m-%d_%H-%M-%S}"
